@@ -18,7 +18,7 @@ npm install @traskin/twitch-tools-js
 
 ## Usage
 
-See our [documentation](wiki).
+See our [documentation](https://github.com/TrAsKiN/twitch-tools-js/wiki).
 
 ## Contributing
 
