@@ -1,0 +1,7 @@
+{
+  "name": "@traskin/twitch-tools-js",
+  "version": "1.0.0",
+  "description": "Twitch Tools JS",
+  "author": "TrAsKiN",
+  "main": "twitch-tools.js"
+}
