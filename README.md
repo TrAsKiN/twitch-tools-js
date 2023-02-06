@@ -13,9 +13,9 @@ Twitch API calls
 ### CDN
 
 ```html
-<script type="module" src="https://cdn.jsdelivr.net/npm/@traskin/twitch-tools-js@1.0.0/twitch-tools.js"></script>
+<script type="module" src="https://cdn.jsdelivr.net/npm/@traskin/twitch-tools-js@1.0/twitch-tools.js"></script>
 <script type="module">
-    import { Api, Chat, EventSub } from 'https://cdn.jsdelivr.net/npm/@traskin/twitch-tools-js@1.0.0/twitch-tools.js'
+    import { Api, Chat, EventSub } from 'https://cdn.jsdelivr.net/npm/@traskin/twitch-tools-js@1.0/twitch-tools.js'
 </script>
 ```
 
