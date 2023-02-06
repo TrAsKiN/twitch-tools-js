@@ -1,6 +1,12 @@
 # Twitch Tools JS
 
-A set of tools for managing events, chat, and API calls using the Twitch.tv API with WebSockets.
+This project is a JavaScript tool designed to handle Twitch and chat events, as well as Twitch API calls. The tools are designed to be used directly in the browser through WebSocket connections.
+
+## Features
+
+Twitch events (EventSub via WebSocket)
+Chat events (IRC via WebSocket)
+Twitch API calls
 
 ## Installation
 
