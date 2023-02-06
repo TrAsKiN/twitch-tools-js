@@ -1,18 +1,19 @@
 'use_strict'
 
 export class Api {
-    url
+    #clientId
+    #token
+    #url = 'https://api.twitch.tv/helix'
 
-    constructor(clientId, token, dev = false) {
-        this.clientId = clientId
-        this.token = token
-        this.url = !dev ? 'https://api.twitch.tv/helix' : 'http://localhost:8000/mock'
+    constructor(clientId, token) {
+        this.#clientId = clientId
+        this.#token = token
     }
 
     async call(endpoint, method = 'GET', body = null) {
         const headers = new Headers({
-            'Authorization': 'Bearer '+ this.token,
-            'Client-Id': this.clientId,
+            'Authorization': 'Bearer '+ this.#token,
+            'Client-Id': this.#clientId,
         })
         if (body) {
             headers.append('Content-Type', 'application/json')
@@ -24,21 +25,22 @@ export class Api {
         if (body) {
             init.body = body
         }
-        const response = await fetch(this.url + endpoint, init)
-        return await this._parseResponse(response)
+        const response = await fetch(this.#url + endpoint, init)
+        return await this.#parseResponse(response)
     }
 
-    generateAuthUrl(scopes) {
-        const record = {
-            "client_id": this.clientId,
-            "redirect_uri": document.location.href.split('#').shift()?.toString() ?? '',
+    static generateAuthUrl(clientId, scopes) {
+        const options = {
+            "client_id": clientId,
+            "redirect_uri": document.location.href.split('#').shift().toString(),
             "response_type": "token",
             "scope": scopes.join("+")
         }
-        return new URL('/oauth2/authorize?'+ decodeURIComponent(new URLSearchParams(record).toString()), 'https://id.twitch.tv/').href
+        const params = new URLSearchParams(options)
+        return new URL('/oauth2/authorize?'+ decodeURIComponent(params.toString()), 'https://id.twitch.tv/').href
     }
 
-    async _parseResponse(response) {
+    async #parseResponse(response) {
         if (!response.ok) {
             console.debug(response)
             throw new Error(`HTTP error! Status: ${response.status}`)
@@ -50,40 +52,56 @@ export class Api {
 }
 
 export class Chat extends EventTarget {
-    socket
-    channel
-    url = 'wss://irc-ws.chat.twitch.tv'
+    #socket
+    #token
+    #api
+    #nickname
+    #url = 'wss://irc-ws.chat.twitch.tv'
 
-    constructor(token, nickname) {
+    constructor(clientId, token) {
         super()
-        this.token = token
-        this.nickname = nickname
+        this.#token = token
+        this.#api = new Api(clientId, token)
+        this.#api.call('/users')
+            .then(content => {
+                this.#nickname = content.data[0].login
+            })
     }
 
-    connect(channel) {
-        this.channel = `#${channel}`
-        this.socket = new WebSocket(this.url)
-        this.socket.onopen = event => {
-            console.debug(`Connection open!`, event)
-            this.socket.send(`PASS oauth:${this.token}`)
-            this.socket.send(`NICK ${this.nickname}`)
-            this.socket.send(`CAP REQ :twitch.tv/commands twitch.tv/tags twitch.tv/membership`)
-            this.socket.send(`JOIN ${this.channel}`)
+    static getScopes() {
+        return [
+            'chat:edit',
+            'chat:read',
+        ]
+    }
+
+    connect() {
+        this.#socket = new WebSocket(this.#url)
+        this.#socket.onopen = () => {
+            console.debug(`Chat connection open!`)
+            this.#socket.send(`PASS oauth:${this.#token}`)
+            this.#socket.send(`NICK ${this.#nickname}`)
+            this.#socket.send(`CAP REQ :twitch.tv/commands twitch.tv/tags twitch.tv/membership`)
+            this.#socket.send(`JOIN #${this.#nickname}`)
         }
-        this.socket.onclose = event => {
-            console.log(`Connection closed!`, event)
+        this.#socket.onclose = () => {
+            console.debug(`Chat connection closed!`)
         }
-        this.socket.onmessage = event => {
-            const data = this._parseMessage(event.data)
-            console.debug(data, event)
+        this.#socket.onmessage = event => {
+            const data = this.#parseMessage(event.data)
             if (data) {
                 switch (data.command.command) {
+                    case '001':
+                        console.debug(`Chat welcome message received!`)
+                        this.dispatchEvent(new CustomEvent('welcome', {detail: data}))
+                        break
                     case 'PING':
-                        console.log(`Sending 'PONG :${data.parameters}'`)
-                        this.socket.send(`PONG :${data.parameters}`)
+                        console.debug(`Chat PING received, sending PONG!`)
+                        this.#socket.send(`PONG :${data.parameters}`)
+                        this.dispatchEvent(new CustomEvent('ping', {detail: data}))
                         break
                     case 'PRIVMSG':
-                        console.log(`New chat message!`, data)
+                        console.debug(`A new chat message has just been received!`)
                         this.dispatchEvent(new CustomEvent('message', {detail: {
                             username: data.tags['display-name'],
                             content: data.parameters,
@@ -91,97 +109,88 @@ export class Chat extends EventTarget {
                         }}))
                         break
                     case 'JOIN':
-                        console.log(`${data.source.nick} has join the chat!`)
+                        console.debug(`${data.source.nick} has join the chat!`)
                         this.dispatchEvent(new CustomEvent('join', {detail: {
                             username: data.source.nick,
                             rawData: data
                         }}))
                         break
                     case 'PART':
-                        console.log(`${data.source.nick} has left the chat!`)
+                        console.debug(`${data.source.nick} has left the chat!`)
                         this.dispatchEvent(new CustomEvent('left', {detail: {
                             username: data.source.nick,
                             rawData: data
                         }}))
                         break
+                    case 'USERSTATE':
+                        console.debug(`Just joined a channel or sent a message.`)
+                        break
+                    default:
+                        console.debug(`Chat command '${data.command.command}' not handled...`)
+                        this.dispatchEvent(new CustomEvent('command', {detail: data}))
                 }
             }
         }
     }
 
-    _parseMessage(message) {
+    #parseMessage(message) {
         let parsedMessage = {
             tags: null,
             source: null,
             command: null,
             parameters: null
         }
-
         let idx = 0
-
         let rawTagsComponent = null
         let rawSourceComponent = null
         let rawCommandComponent = null
         let rawParametersComponent = null
-
         if (message[idx] === '@') {
             let endIdx = message.indexOf(' ')
             rawTagsComponent = message.slice(1, endIdx)
             idx = endIdx + 1
         }
-
         if (message[idx] === ':') {
             idx += 1
             let endIdx = message.indexOf(' ', idx)
             rawSourceComponent = message.slice(idx, endIdx)
             idx = endIdx + 1
         }
-
         let endIdx = message.indexOf(':', idx)
         if (-1 == endIdx) {
             endIdx = message.length
         }
-
         rawCommandComponent = message.slice(idx, endIdx).trim()
-
         if (endIdx != message.length) {
             idx = endIdx + 1
             rawParametersComponent = message.slice(idx)
         }
-
-        parsedMessage.command = this._parseCommand(rawCommandComponent)
-
+        parsedMessage.command = this.#parseCommand(rawCommandComponent)
         if (null == parsedMessage.command) {
             return null
         } else {
             if (null != rawTagsComponent) {
-                parsedMessage.tags = this._parseTags(rawTagsComponent)
+                parsedMessage.tags = this.#parseTags(rawTagsComponent)
             }
-
-            parsedMessage.source = this._parseSource(rawSourceComponent)
-
+            parsedMessage.source = this.#parseSource(rawSourceComponent)
             parsedMessage.parameters = rawParametersComponent ? rawParametersComponent.trim() : rawParametersComponent
             if (rawParametersComponent && rawParametersComponent[0] === '!') {
-                parsedMessage.command = this._parseParameters(rawParametersComponent, parsedMessage.command)
+                parsedMessage.command = this.#parseParameters(rawParametersComponent, parsedMessage.command)
             }
         }
-
         return parsedMessage
     }
 
-    _parseTags(tags) {
+    #parseTags(tags) {
         const tagsToIgnore = {
             'client-nonce': null,
             'flags': null
         }
-
         let dictParsedTags = {}
         let parsedTags = tags.split(';')
-
         parsedTags.forEach(tag => {
             let parsedTag = tag.split('=')
             let tagValue = (parsedTag[1] === '') ? null : parsedTag[1]
-
             switch (parsedTag[0]) {
                 case 'badges':
                 case 'badge-info':
@@ -203,7 +212,6 @@ export class Chat extends EventTarget {
                         let emotes = tagValue.split('/')
                         emotes.forEach(emote => {
                             let emoteParts = emote.split(':')
-
                             let textPositions = []
                             let positions = emoteParts[1].split(',')
                             positions.forEach(position => {
@@ -213,10 +221,8 @@ export class Chat extends EventTarget {
                                     endPosition: positionParts[1]
                                 })
                             })
-
                             dictEmotes[emoteParts[0]] = textPositions
                         })
-
                         dictParsedTags[parsedTag[0]] = dictEmotes
                     } else {
                         dictParsedTags[parsedTag[0]] = null
@@ -232,14 +238,12 @@ export class Chat extends EventTarget {
                     }
             }
         })
-
         return dictParsedTags
     }
 
-    _parseCommand(rawCommandComponent) {
+    #parseCommand(rawCommandComponent) {
         let parsedCommand = null
         let commandParts = rawCommandComponent.split(' ')
-
         switch (commandParts[0]) {
             case 'JOIN':
             case 'PART':
@@ -276,13 +280,13 @@ export class Chat extends EventTarget {
                 }
                 break
             case 'RECONNECT':
-                console.log('The Twitch IRC server is about to terminate the connection for maintenance.')
+                console.debug('The Twitch IRC server is about to terminate the connection for maintenance.')
                 parsedCommand = {
                     command: commandParts[0]
                 }
                 break
             case '421':
-                console.log(`Unsupported IRC command: ${commandParts[2]}`)
+                console.debug(`Unsupported IRC command: ${commandParts[2]}`)
                 return null
             case '001':
                 parsedCommand = {
@@ -298,17 +302,16 @@ export class Chat extends EventTarget {
             case '372':
             case '375':
             case '376':
-                console.debug(`numeric message: ${commandParts[0]}`)
+                console.debug(`IRC numeric message: ${commandParts[0]}`)
                 return null
             default:
-                console.log(`\nUnexpected command: ${commandParts[0]}\n`)
+                console.debug(`\nUnexpected command: ${commandParts[0]}\n`)
                 return null
         }
-
         return parsedCommand
     }
 
-    _parseSource(rawSourceComponent) {
+    #parseSource(rawSourceComponent) {
         if (null == rawSourceComponent) {
             return null
         } else {
@@ -320,11 +323,10 @@ export class Chat extends EventTarget {
         }
     }
 
-    _parseParameters(rawParametersComponent, command) {
+    #parseParameters(rawParametersComponent, command) {
         let idx = 0
         let commandParts = rawParametersComponent.slice(idx + 1).trim()
         let paramsIdx = commandParts.indexOf(' ')
-
         if (-1 == paramsIdx) {
             command.botCommand = commandParts.slice(0)
         }
@@ -332,62 +334,76 @@ export class Chat extends EventTarget {
             command.botCommand = commandParts.slice(0, paramsIdx)
             command.botCommandParams = commandParts.slice(paramsIdx).trim()
         }
-
         return command
     }
 }
 
 export class EventSub extends EventTarget {
-    socket
-    sessionId
-    keepaliveTimer
-    lastMessageTimestamp
-    broadcasterId
-    timer
-    subscriptions = []
-    api
-    url
+    #socket
+    #sessionId
+    #keepaliveTimer
+    #lastMessageTimestamp
+    #broadcasterId
+    #timer
+    #api
+    #subscriptions = []
+    #url = 'wss://eventsub-beta.wss.twitch.tv/ws'
 
-    constructor(clientId, token, dev = false) {
+    constructor(clientId, token) {
         super()
-        this.clientId = clientId
-        this.token = token
-        this.api = new Api(this.clientId, this.token, dev)
-        this.url = !dev ? 'wss://eventsub-beta.wss.twitch.tv/ws' : 'ws://localhost:8080/eventsub'
+        this.#api = new Api(clientId, token)
+    }
+
+    static getScopes() {
+        return [
+            'moderator:read:followers',
+            'bits:read',
+            'channel:read:goals',
+            'channel:read:redemptions',
+            'channel:read:subscriptions',
+        ]
     }
 
     connect() {
-        this.socket = new WebSocket(this.url)
-        this.socket.onopen = event => {
-            console.debug(`Connection open!`, event)
+        this.#socket = new WebSocket(this.#url)
+        this.#socket.onopen = () => {
+            console.debug(`EventSub connection open!`)
         }
-        this.socket.onmessage = event => {
+        this.#socket.onclose = () => {
+            console.debug(`EventSub connection closed!`)
+        }
+        this.#socket.onmessage = event => {
             let data = JSON.parse(event.data)
             switch (data.metadata.message_type) {
                 case 'session_welcome':
-                    this.sessionId = data.payload.session.id
-                    this.keepaliveTimer = data.payload.session.keepalive_timeout_seconds + 1
-                    this._initiateTimer(data)
-                    this.api.call('/users')
+                    console.debug(`EventSub welcome message received!`)
+                    this.#sessionId = data.payload.session.id
+                    this.#keepaliveTimer = data.payload.session.keepalive_timeout_seconds + 1
+                    this.#initiateTimer(data)
+                    this.#api.call('/users')
                     .then(content => {
-                        this.broadcasterId = content.data[0].id
-                        this._subscriptionTo('channel.follow')
-                        this._subscriptionTo('channel.subscribe')
-                        this._subscriptionTo('channel.subscription.gift')
-                        this._subscriptionTo('channel.subscription.message')
-                        this._subscriptionTo('channel.cheer')
-                        this._subscriptionTo('channel.raid')
-                        this._subscriptionTo('channel.channel_points_custom_reward_redemption.add')
-                        this._removeOldSubscribtions()
+                        this.#broadcasterId = content.data[0].id
+                        this.#subscriptionTo('channel.follow')
+                        this.#subscriptionTo('channel.subscribe')
+                        this.#subscriptionTo('channel.subscription.gift')
+                        this.#subscriptionTo('channel.subscription.message')
+                        this.#subscriptionTo('channel.cheer')
+                        this.#subscriptionTo('channel.raid')
+                        this.#subscriptionTo('channel.channel_points_custom_reward_redemption.add')
+                        this.#removeOldSubscribtions()
                     })
                     break
                 case 'session_keepalive':
-                    console.debug(`Connection still active...`, data)
-                    this._initiateTimer(data)
+                    console.debug(`EventSub connection still active...`)
+                    this.#initiateTimer(data)
+                    break
+                case 'session_reconnect':
+                    console.debug(`The EventSub server has requested to be reconnected!`)
+                    this.#reconnect()
                     break
                 case 'notification':
-                    console.log(`New notification!`, data)
-                    this._initiateTimer(data)
+                    console.debug(`A new EventSub notification has just been received!`)
+                    this.#initiateTimer(data)
                     switch (data.metadata.subscription_type) {
                         case 'channel.follow':
                             this.dispatchEvent(new CustomEvent('follow', {detail: data.payload.event}))
@@ -422,78 +438,79 @@ export class EventSub extends EventTarget {
                     }
                     break
                 default:
-                    console.log(data)
+                    console.debug(`EventSub message '${data.metadata.message_type}' not handled...`)
+                    this.dispatchEvent(new CustomEvent('message', {detail: data}))
             }
         }
     }
 
-    disconnect() {
-        this.socket.close()
-        clearTimeout(this.timer)
-        this.timer = null
-        this.sessionId = null
-        this.keepaliveTimer = null
-        this.lastMessageTimestamp = null
-        this.subscriptions.forEach((subscriptionId, index) => {
-            this.api.call('/eventsub/subscriptions?id=' + subscriptionId, 'DELETE')
-            .then(() => this.subscriptions.splice(index, 1))
+    #disconnect() {
+        this.#socket.close()
+        clearTimeout(this.#timer)
+        this.#timer = null
+        this.#sessionId = null
+        this.#keepaliveTimer = null
+        this.#lastMessageTimestamp = null
+        this.#subscriptions.forEach((subscriptionId, index) => {
+            this.#api.call('/eventsub/subscriptions?id=' + subscriptionId, 'DELETE')
+            .then(() => this.#subscriptions.splice(index, 1))
         })
     }
 
-    reconnect() {
-        console.log(`Reconnection...`)
-        this.disconnect()
+    #reconnect() {
+        console.debug(`EventSub attempts to reconnect...`)
+        this.#disconnect()
         this.connect()
     }
 
-    _initiateTimer(message) {
+    #initiateTimer(message) {
         if (message.metadata) {
-            this.lastMessageTimestamp = new Date(message.metadata.message_timestamp)
+            this.#lastMessageTimestamp = new Date(message.metadata.message_timestamp)
         }
-        if (this.timer) {
-            clearTimeout(this.timer)
+        if (this.#timer) {
+            clearTimeout(this.#timer)
         }
-        this.timer = setTimeout((() => {
+        this.#timer = setTimeout((() => {
             const now = new Date()
-            const elapsedTime = now.getTime() - this.lastMessageTimestamp.getTime()
-            if (elapsedTime > (this.keepaliveTimer * 1000)) {
-                this.reconnect()
+            const elapsedTime = now.getTime() - this.#lastMessageTimestamp.getTime()
+            if (elapsedTime > (this.#keepaliveTimer * 1000)) {
+                this.#reconnect()
             } else {
-                this._initiateTimer(message)
+                this.#initiateTimer(message)
             }
-        }).bind(this), this.keepaliveTimer * 1000)
+        }).bind(this), this.#keepaliveTimer * 1000)
     }
 
-    _removeOldSubscribtions() {
-        this.api.call('/eventsub/subscriptions')
+    #removeOldSubscribtions() {
+        this.#api.call('/eventsub/subscriptions')
         .then(content => {
             if (content.data.length > 0) {
                 content.data.forEach(async subscription => {
                     if (subscription.status !== 'enabled') {
-                        this.api.call('/eventsub/subscriptions?id=' + subscription.id, 'DELETE')
+                        this.#api.call('/eventsub/subscriptions?id=' + subscription.id, 'DELETE')
                     }
                 })
             }
         })
     }
 
-    _subscriptionTo(channel) {
-        this.api.call('/eventsub/subscriptions', 'POST', JSON.stringify({
+    #subscriptionTo(channel) {
+        this.#api.call('/eventsub/subscriptions', 'POST', JSON.stringify({
             "type": channel,
             "version": "1",
             "condition": {
-                "broadcaster_user_id": this.broadcasterId,
-                "to_broadcaster_user_id": this.broadcasterId
+                "broadcaster_user_id": this.#broadcasterId,
+                "to_broadcaster_user_id": this.#broadcasterId
             },
             "transport": {
                 "method": "websocket",
-                "session_id": this.sessionId
+                "session_id": this.#sessionId
             }
         }))
         .then(content => {
-            console.log(`Subscription to "${channel}" done!`, content)
+            console.debug(`Subscription to EventSub "${channel}" done!`)
             if (content.data.length > 0) {
-                this.subscriptions.push(content.data[0].id)
+                this.#subscriptions.push(content.data[0].id)
             }
         })
     }
