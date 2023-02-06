@@ -397,6 +397,10 @@ export class EventSub extends EventTarget {
                     console.debug(`EventSub connection still active...`)
                     this.#initiateTimer(data)
                     break
+                case 'session_reconnect':
+                    console.debug(`The EventSub server has requested to be reconnected!`)
+                    this.#reconnect()
+                    break
                 case 'notification':
                     console.debug(`A new EventSub notification has just been received!`)
                     this.#initiateTimer(data)
