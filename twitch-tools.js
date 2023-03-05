@@ -93,12 +93,22 @@ export class Chat extends EventTarget {
                 switch (data.command.command) {
                     case '001':
                         console.debug(`Chat welcome message received!`)
-                        this.dispatchEvent(new CustomEvent('welcome', {detail: data}))
+                        this.dispatchEvent(new CustomEvent('RPL_WELCOME', {detail: {
+                            rawData: data
+                        }}))
+                        break
+                    case '353':
+                        console.debug(`Chat reply with list of users and their status!`)
+                        this.dispatchEvent(new CustomEvent('RPL_NAMREPLY', {detail: {
+                            rawData: data
+                        }}))
                         break
                     case 'PING':
                         console.debug(`Chat PING received, sending PONG!`)
                         this.#socket.send(`PONG :${data.parameters}`)
-                        this.dispatchEvent(new CustomEvent('ping', {detail: data}))
+                        this.dispatchEvent(new CustomEvent('ping', {detail: {
+                            rawData: data
+                        }}))
                         break
                     case 'PRIVMSG':
                         console.debug(`A new chat message has just been received!`)
@@ -127,7 +137,9 @@ export class Chat extends EventTarget {
                         break
                     default:
                         console.debug(`Chat command '${data.command.command}' not handled...`)
-                        this.dispatchEvent(new CustomEvent('command', {detail: data}))
+                        this.dispatchEvent(new CustomEvent('command', {detail: {
+                            rawData: data
+                        }}))
                 }
             }
         }
@@ -297,8 +309,15 @@ export class Chat extends EventTarget {
             case '002':
             case '003':
             case '004':
+                console.debug(`IRC numeric message: ${commandParts[0]}`)
+                return null
             case '353':
             case '366':
+                parsedCommand = {
+                    command: commandParts[0],
+                    channel: commandParts[1]
+                }
+                break
             case '372':
             case '375':
             case '376':
@@ -497,10 +516,11 @@ export class EventSub extends EventTarget {
     #subscriptionTo(channel) {
         this.#api.call('/eventsub/subscriptions', 'POST', JSON.stringify({
             "type": channel,
-            "version": "1",
+            "version": channel === 'channel.follow' ? "2" : "1",
             "condition": {
                 "broadcaster_user_id": this.#broadcasterId,
-                "to_broadcaster_user_id": this.#broadcasterId
+                "to_broadcaster_user_id": this.#broadcasterId,
+                "moderator_user_id": this.#broadcasterId
             },
             "transport": {
                 "method": "websocket",
