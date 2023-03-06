@@ -1,7 +1,13 @@
 {
   "name": "@traskin/twitch-tools-js",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Twitch Tools JS",
   "author": "TrAsKiN",
-  "main": "twitch-tools.js"
+  "main": "twitch-tools.js",
+  "scripts": {
+    "build": "esbuild src/main.js --bundle --keep-names --main-fields=module,browser --format=esm --outfile=twitch-tools.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.17.11"
+  }
 }
