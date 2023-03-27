@@ -1,31 +1,15 @@
 {
   "name": "@traskin/twitch-tools-js",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Twitch Tools JS",
   "author": "TrAsKiN",
   "main": "twitch-tools.js",
   "scripts": {
     "build": "esbuild src/main.js --bundle --minify --keep-names --main-fields=module,browser --format=esm --outfile=twitch-tools.js",
-    "lint": "eslint src/**/*.js --fix"
+    "lint": "eslint src/**/*.js"
   },
   "devDependencies": {
     "esbuild": "^0.17.11",
     "eslint": "^8.35.0"
-  },
-  "eslintConfig": {
-    "parserOptions": {
-      "ecmaVersion": 2022,
-      "sourceType": "module"
-    },
-    "env": {
-      "browser": true,
-      "es2022": true
-    },
-    "rules": {
-      "indent": [
-        "error",
-        2
-      ]
-    }
   }
 }
