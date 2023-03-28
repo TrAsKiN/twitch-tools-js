@@ -99,7 +99,7 @@ export class Chat extends EventTarget {
         case 'CLEARMSG':
           console.debug(`Chat message clearing request.`)
           this.dispatchEvent(new CustomEvent('clear.message', {detail: {
-            messageId: data.tags.id,
+            messageId: data.tags['target-msg-id'],
             rawData: data
           }}))
           break
