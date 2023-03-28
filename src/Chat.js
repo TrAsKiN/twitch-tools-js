@@ -15,7 +15,7 @@ export class Chat extends EventTarget {
     this.#api = new Api(clientId, token)
     this.#api.call('/users')
       .then(content => {
-        this.#nickname = content.data[0].login
+        this.#nickname = content.data.shift().login
       })
   }
 
@@ -85,6 +85,23 @@ export class Chat extends EventTarget {
           break
         case 'USERSTATE':
           console.debug(`Just joined a channel or sent a message.`)
+          this.dispatchEvent(new CustomEvent('state', {detail: {
+            rawData: data
+          }}))
+          break
+        case 'CLEARCHAT':
+          console.debug(`Chat clearing request.`)
+          this.dispatchEvent(new CustomEvent('clear.chat', {detail: {
+            userId: data.tags['target-user-id'] || null,
+            rawData: data
+          }}))
+          break
+        case 'CLEARMSG':
+          console.debug(`Chat message clearing request.`)
+          this.dispatchEvent(new CustomEvent('clear.message', {detail: {
+            messageId: data.tags.id,
+            rawData: data
+          }}))
           break
         default:
           console.debug(`Chat command '${data.command.command}' not handled...`)
@@ -191,12 +208,13 @@ export class Chat extends EventTarget {
           dictParsedTags[parsedTag[0]] = null
         }
         break
-      case 'emote-sets':
-        let emoteSetIds = tagValue.split(',')
+      case 'emote-sets': {
+        const emoteSetIds = tagValue.split(',')
         dictParsedTags[parsedTag[0]] = emoteSetIds
         break
+      }
       default:
-        if (!tagsToIgnore.hasOwnProperty(parsedTag[0])) {
+        if (!Object.prototype.hasOwnProperty.call(tagsToIgnore, parsedTag[0])) {
           dictParsedTags[parsedTag[0]] = tagValue
         }
       }
@@ -212,6 +230,7 @@ export class Chat extends EventTarget {
     case 'PART':
     case 'NOTICE':
     case 'CLEARCHAT':
+    case 'CLEARMSG':
     case 'HOSTTARGET':
     case 'PRIVMSG':
       parsedCommand = {
@@ -236,6 +255,7 @@ export class Chat extends EventTarget {
       }
       break
     case 'USERSTATE':
+    case 'USERNOTICE':
     case 'ROOMSTATE':
       parsedCommand = {
         command: commandParts[0],
