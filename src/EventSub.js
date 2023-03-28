@@ -25,6 +25,9 @@ export class EventSub extends EventTarget {
       'channel:read:goals',
       'channel:read:redemptions',
       'channel:read:subscriptions',
+      'channel:read:polls',
+      'channel:read:predictions',
+      'channel:read:hype_train',
     ]
   }
 
@@ -46,14 +49,35 @@ export class EventSub extends EventTarget {
         this.#initiateTimer(data)
         this.#api.call('/users')
           .then(content => {
-            this.#broadcasterId = content.data[0].id
-            this.#subscriptionTo('channel.follow')
+            this.#broadcasterId = content.data.shift().id
+            this.#subscriptionTo('channel.follow', {
+              "broadcaster_user_id": this.#broadcasterId,
+              "moderator_user_id": this.#broadcasterId,
+            }, "2")
             this.#subscriptionTo('channel.subscribe')
             this.#subscriptionTo('channel.subscription.gift')
             this.#subscriptionTo('channel.subscription.message')
             this.#subscriptionTo('channel.cheer')
-            this.#subscriptionTo('channel.raid')
+            this.#subscriptionTo('channel.raid', {
+              "to_broadcaster_user_id": this.#broadcasterId,
+            })
+            this.#subscriptionTo('channel.raid', {
+              "from_broadcaster_user_id": this.#broadcasterId,
+            })
             this.#subscriptionTo('channel.channel_points_custom_reward_redemption.add')
+            this.#subscriptionTo('channel.goal.begin')
+            this.#subscriptionTo('channel.goal.progress')
+            this.#subscriptionTo('channel.goal.end')
+            this.#subscriptionTo('channel.poll.begin')
+            this.#subscriptionTo('channel.poll.progress')
+            this.#subscriptionTo('channel.poll.end')
+            this.#subscriptionTo('channel.prediction.begin')
+            this.#subscriptionTo('channel.prediction.progress')
+            this.#subscriptionTo('channel.prediction.lock')
+            this.#subscriptionTo('channel.prediction.end')
+            this.#subscriptionTo('channel.hype_train.begin')
+            this.#subscriptionTo('channel.hype_train.progress')
+            this.#subscriptionTo('channel.hype_train.end')
             this.#removeOldSubscribtions()
           })
         break
@@ -85,7 +109,11 @@ export class EventSub extends EventTarget {
           this.dispatchEvent(new CustomEvent('cheer', {detail: data.payload.event}))
           break
         case 'channel.raid':
-          this.dispatchEvent(new CustomEvent('raid', {detail: data.payload.event}))
+          if (data.payload.event.from_broadcaster_user_id) {
+            this.dispatchEvent(new CustomEvent('raid.exit', {detail: data.payload.event}))
+          } else {
+            this.dispatchEvent(new CustomEvent('raid', {detail: data.payload.event}))
+          }
           break
         case 'channel.channel_points_custom_reward_redemption.add':
           this.dispatchEvent(new CustomEvent('channelpoints', {detail: data.payload.event}))
@@ -98,6 +126,36 @@ export class EventSub extends EventTarget {
           break
         case 'channel.goal.end':
           this.dispatchEvent(new CustomEvent('goal.end', {detail: data.payload.event}))
+          break
+        case 'channel.poll.begin':
+          this.dispatchEvent(new CustomEvent('poll.start', {detail: data.payload.event}))
+          break
+        case 'channel.poll.progress':
+          this.dispatchEvent(new CustomEvent('poll.update', {detail: data.payload.event}))
+          break
+        case 'channel.poll.end':
+          this.dispatchEvent(new CustomEvent('poll.end', {detail: data.payload.event}))
+          break
+        case 'channel.prediction.begin':
+          this.dispatchEvent(new CustomEvent('prediction.start', {detail: data.payload.event}))
+          break
+        case 'channel.prediction.progress':
+          this.dispatchEvent(new CustomEvent('prediction.update', {detail: data.payload.event}))
+          break
+        case 'channel.prediction.lock':
+          this.dispatchEvent(new CustomEvent('prediction.close', {detail: data.payload.event}))
+          break
+        case 'channel.prediction.end':
+          this.dispatchEvent(new CustomEvent('prediction.end', {detail: data.payload.event}))
+          break
+        case 'channel.hype_train.begin':
+          this.dispatchEvent(new CustomEvent('hype.start', {detail: data.payload.event}))
+          break
+        case 'channel.hype_train.progress':
+          this.dispatchEvent(new CustomEvent('hype.update', {detail: data.payload.event}))
+          break
+        case 'channel.hype_train.end':
+          this.dispatchEvent(new CustomEvent('hype.end', {detail: data.payload.event}))
           break
         }
         break
@@ -158,24 +216,22 @@ export class EventSub extends EventTarget {
       })
   }
 
-  #subscriptionTo(channel) {
+  #subscriptionTo(channel, condition = null, version = "1") {
     this.#api.call('/eventsub/subscriptions', 'POST', JSON.stringify({
       "type": channel,
-      "version": channel === 'channel.follow' ? "2" : "1",
-      "condition": {
-        "broadcaster_user_id": this.#broadcasterId,
-        "to_broadcaster_user_id": this.#broadcasterId,
-        "moderator_user_id": this.#broadcasterId
+      "version": version,
+      "condition": condition ?? {
+        "broadcaster_user_id": this.#broadcasterId
       },
       "transport": {
         "method": "websocket",
-        "session_id": this.#sessionId
+        "session_id": this.#sessionId,
       }
     }))
       .then(content => {
         console.debug(`Subscription to EventSub "${channel}" done!`)
         if (content.data.length > 0) {
-          this.#subscriptions.push(content.data[0].id)
+          this.#subscriptions.push(content.data.shift().id)
         }
       })
   }
