@@ -1,6 +1,6 @@
 # Twitch Tools JS
 
-[![Publish Package to npmjs.org](https://github.com/TrAsKiN/twitch-tools-js/actions/workflows/publish-package.yaml/badge.svg)](https://github.com/TrAsKiN/twitch-tools-js/actions/workflows/publish-package.yaml)
+[![Publish Package to npmjs.org](https://github.com/TrAsKiN/twitch-tools-js/actions/workflows/publish-package.yaml/badge.svg?event=release)](https://github.com/TrAsKiN/twitch-tools-js/actions/workflows/publish-package.yaml)
 
 This project is a JavaScript tool designed to handle Twitch and chat events, as well as Twitch API calls. The tools are designed to be used directly in the browser through WebSocket connections.
 
