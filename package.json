@@ -4,6 +4,7 @@
   "description": "Twitch Tools JS",
   "author": "TrAsKiN",
   "main": "twitch-tools.js",
+  "types": "twitch-tools.d.ts",
   "scripts": {
     "build": "esbuild src/main.js --bundle --minify --keep-names --main-fields=module,browser --format=esm --outfile=twitch-tools.js",
     "lint": "eslint src/**/*.js"
