@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "declaration": true,
+    "declarationDir": "./types",
+    "outDir": "./built",
+    "target": "es2022"
+  },
+  "include": ["./src/**/*"]
+}

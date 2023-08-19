@@ -1,16 +1,21 @@
 {
   "name": "@traskin/twitch-tools-js",
-  "version": "1.0.7",
+  "version": "1.1.0",
   "description": "Twitch Tools JS",
   "author": "TrAsKiN",
   "main": "twitch-tools.js",
-  "types": "twitch-tools.d.ts",
+  "types": "./types/*.d.ts",
   "scripts": {
-    "build": "esbuild src/main.js --bundle --minify --keep-names --main-fields=module,browser --format=esm --outfile=twitch-tools.js",
-    "lint": "eslint src/**/*.js"
+    "build": "tsc && esbuild built/main.js --bundle --minify --keep-names --main-fields=module,browser --format=esm --outfile=twitch-tools.js",
+    "lint": "eslint src/**/*.ts types/**/*.d.ts",
+    "fix": "eslint --fix src/**/*.ts types/**/*.d.ts",
+    "postbuild": "rm ./types/main.d.ts && npm run fix"
   },
   "devDependencies": {
-    "esbuild": "^0.17.11",
-    "eslint": "^8.35.0"
+    "@typescript-eslint/eslint-plugin": "^6.4.0",
+    "@typescript-eslint/parser": "^6.4.0",
+    "esbuild": "^0.19.2",
+    "eslint": "^8.47.0",
+    "typescript": "^5.1.6"
   }
 }

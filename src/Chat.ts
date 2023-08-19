@@ -1,43 +1,38 @@
-"use_strict";
+import { Api, ClientIdString, UserTokenString } from "./Api";
 
-import { Api } from "./Api";
+export type ChatScope = "chat:edit" | "chat:read";
 
 export class Chat extends EventTarget {
-  #socket;
-  #token;
-  #api;
-  #nickname;
-  #url = "wss://irc-ws.chat.twitch.tv";
+  public scopes: ChatScope[] = ["chat:edit", "chat:read"];
+  private socket: WebSocket;
+  private api: Api;
+  private nickname: string;
+  private url = "wss://irc-ws.chat.twitch.tv";
 
-  constructor(clientId, token) {
+  constructor(clientId: ClientIdString, private token: UserTokenString) {
     super();
-    this.#token = token;
-    this.#api = new Api(clientId, token);
-    this.#api.call("/users").then((content) => {
-      this.#nickname = content.data.shift().login;
+    this.api = new Api(clientId, token);
+    this.api.call("/users").then((content) => {
+      this.nickname = content.data.shift().login;
     });
   }
 
-  static getScopes() {
-    return ["chat:edit", "chat:read"];
-  }
-
-  connect() {
-    this.#socket = new WebSocket(this.#url);
-    this.#socket.onopen = () => {
+  public connect() {
+    this.socket = new WebSocket(this.url);
+    this.socket.onopen = () => {
       console.debug(`Chat connection open!`);
-      this.#socket.send(`PASS oauth:${this.#token}`);
-      this.#socket.send(`NICK ${this.#nickname}`);
-      this.#socket.send(
+      this.socket.send(`PASS oauth:${this.token}`);
+      this.socket.send(`NICK ${this.nickname}`);
+      this.socket.send(
         `CAP REQ :twitch.tv/commands twitch.tv/tags twitch.tv/membership`
       );
-      this.#socket.send(`JOIN #${this.#nickname}`);
+      this.socket.send(`JOIN #${this.nickname}`);
     };
-    this.#socket.onclose = () => {
+    this.socket.onclose = () => {
       console.debug(`Chat connection closed!`);
     };
-    this.#socket.onmessage = (event) => {
-      const data = this.#parseMessage(event.data);
+    this.socket.onmessage = (event) => {
+      const data = this.parseMessage(event.data);
       if (data) {
         switch (data.command.command) {
           case "001":
@@ -62,7 +57,7 @@ export class Chat extends EventTarget {
             break;
           case "PING":
             console.debug(`Chat PING received, sending PONG!`);
-            this.#socket.send(`PONG :${data.parameters}`);
+            this.socket.send(`PONG :${data.parameters}`);
             this.dispatchEvent(
               new CustomEvent("ping", {
                 detail: {
@@ -153,26 +148,31 @@ export class Chat extends EventTarget {
     };
   }
 
-  #parseMessage(message) {
-    let parsedMessage = {
+  private parseMessage(message: any) {
+    const parsedMessage: {
+      tags: any;
+      source: any;
+      command: any;
+      parameters: any;
+    } = {
       tags: null,
       source: null,
       command: null,
       parameters: null,
     };
     let idx = 0;
-    let rawTagsComponent = null;
-    let rawSourceComponent = null;
-    let rawCommandComponent = null;
-    let rawParametersComponent = null;
+    let rawTagsComponent: any = null;
+    let rawSourceComponent: any = null;
+    let rawCommandComponent: any = null;
+    let rawParametersComponent: any = null;
     if (message[idx] === "@") {
-      let endIdx = message.indexOf(" ");
+      const endIdx = message.indexOf(" ");
       rawTagsComponent = message.slice(1, endIdx);
       idx = endIdx + 1;
     }
     if (message[idx] === ":") {
       idx += 1;
-      let endIdx = message.indexOf(" ", idx);
+      const endIdx = message.indexOf(" ", idx);
       rawSourceComponent = message.slice(idx, endIdx);
       idx = endIdx + 1;
     }
@@ -185,19 +185,19 @@ export class Chat extends EventTarget {
       idx = endIdx + 1;
       rawParametersComponent = message.slice(idx);
     }
-    parsedMessage.command = this.#parseCommand(rawCommandComponent);
+    parsedMessage.command = this.parseCommand(rawCommandComponent);
     if (null == parsedMessage.command) {
       return null;
     } else {
       if (null != rawTagsComponent) {
-        parsedMessage.tags = this.#parseTags(rawTagsComponent);
+        parsedMessage.tags = this.parseTags(rawTagsComponent);
       }
-      parsedMessage.source = this.#parseSource(rawSourceComponent);
+      parsedMessage.source = this.parseSource(rawSourceComponent);
       parsedMessage.parameters = rawParametersComponent
         ? rawParametersComponent.trim()
         : rawParametersComponent;
       if (rawParametersComponent && rawParametersComponent[0] === "!") {
-        parsedMessage.command = this.#parseParameters(
+        parsedMessage.command = this.parseParameters(
           rawParametersComponent,
           parsedMessage.command
         );
@@ -206,24 +206,27 @@ export class Chat extends EventTarget {
     return parsedMessage;
   }
 
-  #parseTags(tags) {
-    const tagsToIgnore = {
+  private parseTags(tags: any) {
+    const tagsToIgnore: {
+      "client-nonce": any;
+      flags: any;
+    } = {
       "client-nonce": null,
       flags: null,
     };
-    let dictParsedTags = {};
-    let parsedTags = tags.split(";");
-    parsedTags.forEach((tag) => {
-      let parsedTag = tag.split("=");
-      let tagValue = parsedTag[1] === "" ? null : parsedTag[1];
+    const dictParsedTags = {};
+    const parsedTags = tags.split(";");
+    parsedTags.forEach((tag: any) => {
+      const parsedTag = tag.split("=");
+      const tagValue = parsedTag[1] === "" ? null : parsedTag[1];
       switch (parsedTag[0]) {
         case "badges":
         case "badge-info":
           if (tagValue) {
-            let dict = {};
-            let badges = tagValue.split(",");
+            const dict = {};
+            const badges = tagValue.split(",");
             badges.forEach((pair) => {
-              let badgeParts = pair.split("/");
+              const badgeParts = pair.split("/");
               dict[badgeParts[0]] = badgeParts[1];
             });
             dictParsedTags[parsedTag[0]] = dict;
@@ -233,14 +236,14 @@ export class Chat extends EventTarget {
           break;
         case "emotes":
           if (tagValue) {
-            let dictEmotes = {};
-            let emotes = tagValue.split("/");
+            const dictEmotes = {};
+            const emotes = tagValue.split("/");
             emotes.forEach((emote) => {
-              let emoteParts = emote.split(":");
-              let textPositions = [];
-              let positions = emoteParts[1].split(",");
+              const emoteParts = emote.split(":");
+              const textPositions: any = [];
+              const positions = emoteParts[1].split(",");
               positions.forEach((position) => {
-                let positionParts = position.split("-");
+                const positionParts = position.split("-");
                 textPositions.push({
                   startPosition: positionParts[0],
                   endPosition: positionParts[1],
@@ -269,9 +272,9 @@ export class Chat extends EventTarget {
     return dictParsedTags;
   }
 
-  #parseCommand(rawCommandComponent) {
-    let parsedCommand = null;
-    let commandParts = rawCommandComponent.split(" ");
+  private parseCommand(rawCommandComponent: any) {
+    let parsedCommand: any = null;
+    const commandParts = rawCommandComponent.split(" ");
     switch (commandParts[0]) {
       case "JOIN":
       case "PART":
@@ -350,11 +353,11 @@ export class Chat extends EventTarget {
     return parsedCommand;
   }
 
-  #parseSource(rawSourceComponent) {
+  private parseSource(rawSourceComponent: any) {
     if (null == rawSourceComponent) {
       return null;
     } else {
-      let sourceParts = rawSourceComponent.split("!");
+      const sourceParts = rawSourceComponent.split("!");
       return {
         nick: sourceParts.length == 2 ? sourceParts[0] : null,
         host: sourceParts.length == 2 ? sourceParts[1] : sourceParts[0],
@@ -362,10 +365,10 @@ export class Chat extends EventTarget {
     }
   }
 
-  #parseParameters(rawParametersComponent, command) {
-    let idx = 0;
-    let commandParts = rawParametersComponent.slice(idx + 1).trim();
-    let paramsIdx = commandParts.indexOf(" ");
+  private parseParameters(rawParametersComponent: any, command: any) {
+    const idx = 0;
+    const commandParts = rawParametersComponent.slice(idx + 1).trim();
+    const paramsIdx = commandParts.indexOf(" ");
     if (-1 == paramsIdx) {
       command.botCommand = commandParts.slice(0);
     } else {
