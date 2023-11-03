@@ -18,14 +18,14 @@ This project is a JavaScript tool designed to handle Twitch and chat events, as 
 ```html
 <script
   type="module"
-  src="https://cdn.jsdelivr.net/npm/@traskin/twitch-tools-js@1.0/twitch-tools.js"
+  src="https://cdn.jsdelivr.net/npm/@traskin/twitch-tools-js@1.1/twitch-tools.js"
 ></script>
 <script type="module">
   import {
     Api,
     Chat,
     EventSub,
-  } from "https://cdn.jsdelivr.net/npm/@traskin/twitch-tools-js@1.0/twitch-tools.js";
+  } from "https://cdn.jsdelivr.net/npm/@traskin/twitch-tools-js@1.1/twitch-tools.js";
 </script>
 ```
 
