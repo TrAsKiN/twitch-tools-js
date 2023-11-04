@@ -2,6 +2,7 @@
   "compilerOptions": {
     "declaration": true,
     "declarationDir": "./types",
+    "rootDir": "./src",
     "outDir": "./built",
     "target": "es2022"
   },

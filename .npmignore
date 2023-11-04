@@ -1,5 +1,4 @@
 /.github/
 /built/
-/src/
 /.eslintrc.cjs
 /tsconfig.json
